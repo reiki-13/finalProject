@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contract Analysis AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Contract Analysis AI</p>
+    <h1>Understand your employment contract</h1>
+    <p class="subtitle">Upload a contract PDF and get a plain-English breakdown of what each clause means, and what's worth double-checking before you sign.</p>
+    <div class="disclaimer">
+      <strong>This is not legal advice.</strong> This tool is for informational purposes only. For a binding decision, please consult a qualified employment lawyer. Your file is processed to generate this report and is not retained afterward.
+    </div>
+  </header>
+
+  {% if not server_ready %}
+  <div class="server-warning">This server isn't configured with an API key yet, so analysis won't run until an administrator sets one.</div>
+  {% endif %}
+
+  {% if error %}
+  <div class="error-box">{{ error }}</div>
+  {% endif %}
+
+  <form id="uploadForm" class="upload-zone" action="/analyze" method="post" enctype="multipart/form-data">
+    <div class="upload-icon">&#128196;</div>
+    <p class="upload-title">Choose your contract PDF</p>
+    <p class="upload-hint">PDF only, works best with a real text layer (not a photo/scan)</p>
+    <input type="file" name="contract" accept="application/pdf" required>
+    <br>
+    <button class="upload-button" type="submit" {{ 'disabled' if not server_ready else '' }}>Analyse contract</button>
+  </form>
+
+  <footer>
+    Contract Analysis AI &mdash; built for the CM3070 Final Project. A three-stage pipeline: PDF extraction and clause chunking, clause classification, and plain-English explanation generation via the Claude API, held server-side.
+  </footer>
+</div>
+
+<div class="spinner-overlay" id="spinnerOverlay">
+  <div class="spinner"></div>
+  <p class="spinner-text">Reading and analysing your contract&hellip; this can take a little while for longer documents.</p>
+</div>
+
+<script>
+document.getElementById('uploadForm').addEventListener('submit', function () {
+  document.getElementById('spinnerOverlay').style.display = 'flex';
+});
+</script>
+</body>
+</html>

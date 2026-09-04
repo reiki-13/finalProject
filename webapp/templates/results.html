@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your contract, explained &mdash; Contract Analysis AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Contract Analysis AI</p>
+    <h1>Your contract, explained</h1>
+    <p class="subtitle">{{ filename }}</p>
+    <div class="disclaimer">
+      <strong>This is not legal advice.</strong> For a binding decision, please consult a qualified employment lawyer.
+    </div>
+  </header>
+
+  <div class="summary-bar">
+    <div class="summary-stat total"><span class="num">{{ stats.total }}</span><span class="label">Clauses found</span></div>
+    <div class="summary-stat high"><span class="num">{{ stats.high }}</span><span class="label">High risk</span></div>
+    <div class="summary-stat medium"><span class="num">{{ stats.medium }}</span><span class="label">Worth checking</span></div>
+    <div class="summary-stat low"><span class="num">{{ stats.low }}</span><span class="label">Low risk</span></div>
+  </div>
+  {% if stats.na > 0 %}
+  <p class="source-note">{{ stats.na }} clause(s) didn't clearly match a tracked category and are shown last, unscored, rather than guessed.</p>
+  {% endif %}
+  <a class="new-upload-link" href="/">&larr; Analyse a different contract</a>
+
+  <section class="clauses">
+    {% for c in clauses %}
+    {% set risk = c.risk_level if c.risk_level in ['HIGH','MEDIUM','LOW'] else 'N/A' %}
+    {% set risk_class = 'risk-high' if risk == 'HIGH' else ('risk-medium' if risk == 'MEDIUM' else ('risk-low' if risk == 'LOW' else 'risk-na')) %}
+    {% set risk_label = 'High risk' if risk == 'HIGH' else ('Worth checking' if risk == 'MEDIUM' else ('Low risk' if risk == 'LOW' else 'Unclassified')) %}
+    <article class="clause-card {{ risk_class }}">
+      <div class="risk-tab">{{ risk_label }}</div>
+      <header class="clause-header">
+        <h3>{{ c.section_heading or ('Clause ' ~ c.chunk_id) }}</h3>
+        <div class="clause-meta">{{ (c.predicted_label or 'unclassified') | replace('_',' ') | title }}</div>
+      </header>
+      <blockquote class="source-text">{{ c.clause_text }}</blockquote>
+      <div class="explanation">
+        <span class="explanation-label">What this means</span>
+        <p>{{ c.explanation }}</p>
+      </div>
+      {% if risk != 'N/A' %}
+      <div class="watch-for">
+        <span class="watch-for-label">Watch for</span>
+        <p>{{ c.watch_for }}</p>
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </section>
+
+  <footer>
+    Contract Analysis AI &mdash; built for the CM3070 Final Project.
+  </footer>
+</div>
+</body>
+</html>
