@@ -33,9 +33,9 @@
 
   <section class="clauses">
     {% for c in clauses %}
-    {% set risk = c.risk_level if c.risk_level in ['HIGH','MEDIUM','LOW'] else 'N/A' %}
-    {% set risk_class = 'risk-high' if risk == 'HIGH' else ('risk-medium' if risk == 'MEDIUM' else ('risk-low' if risk == 'LOW' else 'risk-na')) %}
-    {% set risk_label = 'High risk' if risk == 'HIGH' else ('Worth checking' if risk == 'MEDIUM' else ('Low risk' if risk == 'LOW' else 'Unclassified')) %}
+    {% set risk = c.risk_level if c.risk_level in ['HIGH','MEDIUM','LOW','ERROR'] else 'N/A' %}
+    {% set risk_class = 'risk-high' if risk == 'HIGH' else ('risk-medium' if risk == 'MEDIUM' else ('risk-low' if risk == 'LOW' else ('risk-error' if risk == 'ERROR' else 'risk-na'))) %}
+    {% set risk_label = 'High risk' if risk == 'HIGH' else ('Worth checking' if risk == 'MEDIUM' else ('Low risk' if risk == 'LOW' else ('Explanation unavailable' if risk == 'ERROR' else 'Unclassified'))) %}
     <article class="clause-card {{ risk_class }}">
       <div class="risk-tab">{{ risk_label }}</div>
       <header class="clause-header">
@@ -47,7 +47,7 @@
         <span class="explanation-label">What this means</span>
         <p>{{ c.explanation }}</p>
       </div>
-      {% if risk != 'N/A' %}
+      {% if risk not in ['N/A', 'ERROR'] %}
       <div class="watch-for">
         <span class="watch-for-label">Watch for</span>
         <p>{{ c.watch_for }}</p>

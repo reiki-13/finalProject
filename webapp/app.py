@@ -18,8 +18,8 @@ load_dotenv()
 app = Flask(__name__)
 
 # ------------------------------------------------------------------
-# API key lives ONLY here, as a server-side environment variable.
-# It is never sent to, stored in, or visible from the browser.
+# Model 3's API key. Held ONLY here, as a server-side environment
+# variable -- never sent to, stored in, or visible from the browser.
 # ------------------------------------------------------------------
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
@@ -36,14 +36,132 @@ TARGET_CLAUSE_TYPES = [
 ]
 
 # ------------------------------------------------------------------
-# Model 1: PDF extraction & clause chunking
-# (ported directly from the validated Model1_PDF_Extraction.ipynb)
+# Pre-pipeline sanity check: does this document even look
+# like an employment contract? Catches a wrong upload (a
+# resume, an invoice, an unrelated PDF) before wasting any Model 2/3
+# calls on it, instead of forcing meaningless output out of the pipeline.
 # ------------------------------------------------------------------
 
-def extract_pages(pdf_path):
+EMPLOYMENT_CONTRACT_KEYWORDS = [
+    "employ",  # matches employee, employer, employment, employed
+    "salary", "remuneration", "wage",
+    "terminat",  # matches terminate, terminated, termination
+    "probation",  # matches probation, probationary
+    "notice period", "duties", "job title", "position",
+    "confidential",  # matches confidential, confidentiality
+    "non-compete", "noncompete", "cpf", "annual leave", "sick leave",
+    "commencement", "basic salary", "resign",  # matches resign, resignation
+    "employment agreement", "contract of employment",
+]
+
+
+def looks_like_employment_contract(combined_text_lower, min_keyword_hits=3):
+    hits = sum(1 for kw in EMPLOYMENT_CONTRACT_KEYWORDS if kw in combined_text_lower)
+    return hits >= min_keyword_hits
+
+CONFIDENCE_THRESHOLD = 0.35
+
+# ------------------------------------------------------------------
+# Model 2: Clause Classification (zero-shot DeBERTa NLI)
+# Loaded once so the
+# app still starts quickly and so importing this module for testing
+# doesn't require downloading model weights.
+# ------------------------------------------------------------------
+
+_zero_shot_classifier = None
+
+
+def get_classifier():
+    """Lazily loads the zero-shot classification pipeline (same model
+    used in Model2's zero-shot prototype notebook: cross-encoder/nli-deberta-v3-small).
+    Downloaded from Hugging Face on first call and cached in memory afterward."""
+    global _zero_shot_classifier
+    if _zero_shot_classifier is None:
+        from transformers import pipeline
+        print("[Model 2] Loading zero-shot classifier (first request only, "
+              "may take a moment)...")
+        _zero_shot_classifier = pipeline(
+            "zero-shot-classification", model="cross-encoder/nli-deberta-v3-small"
+        )
+    return _zero_shot_classifier
+
+
+def classify_clause(clause_text):
+    """
+    Model 2: classifies a single clause into one of the six target types
+    using zero-shot NLI, applying the same 0.35 confidence threshold
+    documented in the project report. Returns (label, confidence) --
+    label is 'unclassified' if no candidate clears the threshold.
+    """
+    classifier = get_classifier()
+    result = classifier(clause_text[:2000], candidate_labels=TARGET_CLAUSE_TYPES)
+    top_label = result["labels"][0]
+    top_score = result["scores"][0]
+    if top_score < CONFIDENCE_THRESHOLD:
+        return "unclassified", top_score
+    return top_label, top_score
+
+# ------------------------------------------------------------------
+# Model 1: PDF extraction & clause chunking
+# (ported directly from the validated Model1_PDF_Extraction.ipynb,
+# including the OCR fallback -- Tesseract's LSTM engine is this
+# pipeline's third pre-trained model, alongside Model 2's classifier
+# and Model 3's LLM.)
+# ------------------------------------------------------------------
+
+def needs_ocr(pdf_path, min_chars_per_page=20):
+    """Detects pages with no meaningful extractable text layer."""
+    pages_needing_ocr = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for i, page in enumerate(pdf.pages, start=1):
+            text = page.extract_text() or ""
+            if len(text.strip()) < min_chars_per_page:
+                pages_needing_ocr.append(i)
+    return pages_needing_ocr
+
+
+def ocr_page_to_lines(image, page_num, dpi=200):
+    """
+    Runs Tesseract's LSTM OCR engine on a page image and groups the
+    word-level output into lines with synthetic top/bottom positions,
+    rescaled from pixel coordinates (at the given render DPI) into
+    points so gaps are directly comparable to pdfplumber's native
+    coordinate system regardless of render resolution.
+    """
+    import pytesseract
+    from pytesseract import Output
+    data = pytesseract.image_to_data(image, output_type=Output.DICT)
+    lines = {}
+    for i in range(len(data['text'])):
+        word = data['text'][i].strip()
+        if not word:
+            continue
+        key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+        top, height = data['top'][i], data['height'][i]
+        if key not in lines:
+            lines[key] = {'words': [], 'top': top, 'bottom': top + height}
+        lines[key]['words'].append(word)
+        lines[key]['bottom'] = max(lines[key]['bottom'], top + height)
+
+    scale = 72.0 / dpi
+    ordered = sorted(lines.values(), key=lambda l: l['top'])
+    out, prev_bottom = [], None
+    for l in ordered:
+        top_pt, bottom_pt = l['top'] * scale, l['bottom'] * scale
+        gap = (top_pt - prev_bottom) if prev_bottom is not None else None
+        out.append({'page': page_num, 'text': ' '.join(l['words']), 'gap_before': gap})
+        prev_bottom = bottom_pt
+    return out
+
+
+def extract_pages(pdf_path, ocr_dpi=200):
     all_lines = []
+    ocr_needed_pages = set(needs_ocr(pdf_path))
+
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
+            if page_num in ocr_needed_pages:
+                continue
             try:
                 lines = page.extract_text_lines()
             except Exception:
@@ -56,7 +174,18 @@ def extract_pages(pdf_path):
                 gap = (l['top'] - prev_bottom) if prev_bottom is not None else None
                 all_lines.append({'page': page_num, 'text': text, 'gap_before': gap})
                 prev_bottom = l['bottom']
+
+    if ocr_needed_pages:
+        from pdf2image import convert_from_path
+        print(f"[Model 1] Pages with no extractable text layer -- running OCR: "
+              f"{sorted(ocr_needed_pages)}")
+        images = convert_from_path(pdf_path, dpi=ocr_dpi)
+        for page_num in sorted(ocr_needed_pages):
+            all_lines.extend(ocr_page_to_lines(images[page_num - 1], page_num, dpi=ocr_dpi))
+        all_lines.sort(key=lambda l: l['page'])
+
     return all_lines
+
 
 
 _STAMP_PATTERNS = [
@@ -203,8 +332,12 @@ def chunk_into_clauses(all_lines, min_chunk_chars=30):
 
 
 # ------------------------------------------------------------------
-# Model 2 + 3: classification + explanation via the real Claude API,
-# called server-side using the securely-held key.
+# Model 3: Explanation Generation via the real Claude API, called
+# server-side using the securely-held key. Model 3 does NOT decide the
+# clause type -- that decision is Model 2's alone (classify_clause,
+# above). Model 3 only explains a clause it has already been told the
+# type of, and independently assesses risk level from the clause's
+# actual text -- matching the pipeline documented in the project report.
 # ------------------------------------------------------------------
 
 PROMPT_TEMPLATE = """You are helping a non-lawyer employee in Singapore understand one clause \
@@ -212,55 +345,63 @@ from their employment contract.
 
 Clause text: "{clause_text}"
 
-Decide which ONE of these six categories the clause best fits: {types}. If it genuinely does \
-not fit any of them (e.g. it's administrative or procedural, like a commencement date, working \
-hours, or a signature block), use "unclassified" instead of forcing a guess.
+This clause has already been classified as a "{predicted_label}" by a separate classification \
+model. Do not reclassify it or question the label -- your job is only to explain it and assess \
+its risk.
 
 Respond with ONLY a valid JSON object, no other text, no markdown fences, with exactly these keys:
-- "predicted_label": one of the six category strings above, or "unclassified"
-- "risk_level": "LOW", "MEDIUM", "HIGH", or "N/A" if unclassified -- based on the ACTUAL terms \
-in this specific clause, not a generic guess for the category
+- "risk_level": "LOW", "MEDIUM", or "HIGH" -- based on the ACTUAL terms in this specific clause \
+(durations, amounts, conditions), not a generic guess for the category
 - "explanation": one or two plain-English sentences explaining what this specific clause means \
-for the employee, referencing concrete details (durations, amounts, conditions) where present
+for the employee, referencing concrete details where present
 - "watch_for": one short, concrete thing the employee should check or ask about, specific to \
 what's actually written here
 """
 
 
-def classify_and_explain(clause_text, max_retries=2):
+def explain_clause(clause_text, predicted_label, max_retries=2):
+    """
+    Model 3: given a clause and the type Model 2 already assigned it,
+    generates a plain-English risk assessment and explanation via Claude.
+    Never called for 'unclassified' clauses -- see the /analyze route.
+    """
     prompt = PROMPT_TEMPLATE.format(
         clause_text=clause_text[:1500].replace('"', "'"),
-        types=", ".join(TARGET_CLAUSE_TYPES)
+        predicted_label=predicted_label
     )
     raw = None
+    last_error = None
     for attempt in range(max_retries + 1):
         try:
             resp = client.messages.create(
-                model=MODEL_NAME, max_tokens=500,
+                model=MODEL_NAME, max_tokens=400,
                 messages=[{"role": "user", "content": prompt}]
             )
             raw = resp.content[0].text
             break
-        except Exception:
-            if attempt == max_retries:
-                raw = None
-            else:
+        except Exception as e:
+            last_error = e
+            print(f"[explain_clause] API call failed (attempt {attempt + 1}/"
+                  f"{max_retries + 1}): {type(e).__name__}: {e}")
+            if attempt < max_retries:
                 time.sleep(1)
 
-    fallback = {"predicted_label": "unclassified", "risk_level": "N/A",
-                "explanation": "This clause couldn't be analysed automatically due to a "
-                                "connection issue.",
+    fallback = {"risk_level": "ERROR",
+                "explanation": "This clause was classified but couldn't be explained "
+                                f"automatically due to a connection issue "
+                                f"({type(last_error).__name__ if last_error else 'unknown'}).",
                 "watch_for": "Review this clause manually."}
     if raw is None:
         return fallback
     try:
         cleaned = re.sub(r'^```(json)?|```$', '', raw.strip(), flags=re.M).strip()
         parsed = json.loads(cleaned)
-        assert parsed.get("predicted_label") and parsed.get("risk_level")
-        assert parsed.get("explanation") and parsed.get("watch_for")
+        assert parsed.get("risk_level") and parsed.get("explanation") and parsed.get("watch_for")
         return parsed
-    except Exception:
+    except Exception as e:
+        print(f"[explain_clause] Response wasn't valid JSON: {e}\nRaw response: {raw[:300]}")
         return fallback
+
 
 
 # ------------------------------------------------------------------
@@ -299,14 +440,37 @@ def analyze():
     if not chunks:
         return render_template(
             "index.html", server_ready=True,
-            error="No readable clause-length text was found in this PDF. If it's a scanned "
-                  "document, this deployment doesn't include OCR (the project's notebooks do).")
+            error="No readable clause-length text was found in this PDF. It may be corrupted "
+                  "or contain no meaningful content even after OCR.")
+
+    combined_text = " ".join(c["clause_text"] for c in chunks).lower()
+    if not looks_like_employment_contract(combined_text):
+        return render_template(
+            "index.html", server_ready=True,
+            error="This doesn't look like an employment contract -- please check you've "
+                  "uploaded the right file and try again.")
 
     for chunk in chunks:
-        analysis = classify_and_explain(chunk["clause_text"])
-        chunk.update(analysis)
+        # Model 2: real classification, independent of Model 3
+        label, confidence = classify_clause(chunk["clause_text"])
+        chunk["predicted_label"] = label
+        chunk["confidence"] = confidence
 
-    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "N/A": 3}
+        if label == "unclassified":
+            # Matches the documented pipeline: unclassified clauses bypass
+            # Model 3 entirely rather than asking an LLM to explain a category
+            # it was never confidently assigned to.
+            chunk["risk_level"] = "N/A"
+            chunk["explanation"] = ("This clause didn't clearly match a tracked category "
+                                     "-- it may be administrative or procedural content.")
+            chunk["watch_for"] = ("Skim this manually if it looks important; automatic risk "
+                                   "assessment wasn't confident enough to be reliable here.")
+        else:
+            # Model 3: explanation only, given Model 2's label
+            analysis = explain_clause(chunk["clause_text"], label)
+            chunk.update(analysis)
+
+    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "N/A": 3, "ERROR": 4}
     chunks.sort(key=lambda c: order.get(c.get("risk_level", "N/A"), 3))
 
     stats = {
@@ -315,6 +479,7 @@ def analyze():
         "medium": sum(1 for c in chunks if c.get("risk_level") == "MEDIUM"),
         "low": sum(1 for c in chunks if c.get("risk_level") == "LOW"),
         "na": sum(1 for c in chunks if c.get("risk_level") == "N/A"),
+        "error": sum(1 for c in chunks if c.get("risk_level") == "ERROR"),
     }
     return render_template("results.html", clauses=chunks, stats=stats,
                             filename=file.filename)
