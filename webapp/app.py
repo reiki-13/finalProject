@@ -6,8 +6,14 @@ import tempfile
 from collections import defaultdict
 
 from flask import Flask, request, render_template
+from dotenv import load_dotenv
 
 import pdfplumber
+
+# Load variables from a local .env file, if one exists (never committed to
+# git -- see .gitignore). This is what lets you set ANTHROPIC_API_KEY once
+# in a file instead of retyping it into the terminal every session.
+load_dotenv()
 
 app = Flask(__name__)
 
