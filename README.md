@@ -49,8 +49,6 @@ cd webapp
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-export ANTHROPIC_API_KEY=your-key-here     # Windows (PowerShell): $env:ANTHROPIC_API_KEY="your-key-here"
 python app.py
 ```
 
