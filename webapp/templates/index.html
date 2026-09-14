@@ -14,14 +14,14 @@
   <header class="masthead">
     <p class="eyebrow">Contract Analysis AI</p>
     <h1>Understand your employment contract</h1>
-    <p class="subtitle">Upload a contract PDF and get a plain-English breakdown of what each clause means, and what's worth double-checking before you sign.</p>
+    <p class="subtitle">Upload a contract PDF and get a plain-English breakdown of what each clause means and what's worth double-checking before you sign.</p>
     <div class="disclaimer">
       <strong>This is not legal advice.</strong> This tool is for informational purposes only. For a binding decision, please consult a qualified employment lawyer. Your file is processed to generate this report and is not retained afterward.
     </div>
   </header>
 
   {% if not server_ready %}
-  <div class="server-warning">This server isn't configured with an API key yet, so analysis won't run until an administrator sets one.</div>
+  <div class="server-warning">This server isn't configured with an API key yet so analysis won't run until an administrator sets one.</div>
   {% endif %}
 
   {% if error %}
@@ -38,7 +38,7 @@
   </form>
 
   <footer>
-    Contract Analysis AI &mdash; built for the CM3070 Final Project. A three-stage pipeline: PDF extraction and clause chunking, clause classification, and plain-English explanation generation via the Groq API (Llama 3.3), held server-side.
+    Contract Analysis AI &mdash; built for the CM3070 Final Project. A three-stage pipeline: PDF extraction and clause chunking, clause classification and plain-English explanation generation via the Groq API (Llama 3.3), held server-side.
   </footer>
 </div>
 
