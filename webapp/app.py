@@ -30,7 +30,10 @@ if GROQ_API_KEY:
     import groq
     client = groq.Groq(api_key=GROQ_API_KEY)
 
-MODEL_NAME = "llama-3.3-70b-versatile"
+# llama-3.3-70b-versatile was decommissioned by Groq on 2026-08-16 -- Groq
+# deprecates/renames models fairly often, so this is configurable via .env
+# rather than hardcoded, to survive the *next* one without a code change.
+MODEL_NAME = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 TARGET_CLAUSE_TYPES = [
     "compensation clause", "termination clause", "confidentiality clause",
@@ -397,7 +400,16 @@ def explain_clause(clause_text, predicted_label, max_retries=2):
     if raw is None:
         return fallback
     try:
-        cleaned = re.sub(r'^```(json)?|```$', '', raw.strip(), flags=re.M).strip()
+        # Reasoning-tuned models (like gpt-oss-120b) sometimes prepend thinking/
+        # explanation text before the actual JSON answer, despite being told to
+        # return ONLY JSON. Rather than assume the whole response is clean JSON
+        # (stripping only markdown fences), find the first '{' and last '}' and
+        # parse just that substring -- robust to extra text on either side.
+        start = raw.find('{')
+        end = raw.rfind('}')
+        if start == -1 or end == -1 or end < start:
+            raise ValueError("No JSON object found in response")
+        cleaned = raw[start:end + 1]
         parsed = json.loads(cleaned)
         assert parsed.get("risk_level") and parsed.get("explanation") and parsed.get("watch_for")
         return parsed
