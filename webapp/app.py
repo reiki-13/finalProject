@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import pdfplumber
 
 # Load variables from a local .env file, if one exists (never committed to
-# git -- see .gitignore). This is what lets you set ANTHROPIC_API_KEY once
+# git -- see .gitignore). This is what lets you set GROQ_API_KEY once
 # in a file instead of retyping it into the terminal every session.
 load_dotenv()
 
@@ -20,15 +20,17 @@ app = Flask(__name__)
 # ------------------------------------------------------------------
 # Model 3's API key. Held ONLY here, as a server-side environment
 # variable -- never sent to, stored in, or visible from the browser.
+# Groq: genuinely free tier, no credit card required, rate-limited
+# (not time-limited) -- see console.groq.com/keys.
 # ------------------------------------------------------------------
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 client = None
-if ANTHROPIC_API_KEY:
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+if GROQ_API_KEY:
+    import groq
+    client = groq.Groq(api_key=GROQ_API_KEY)
 
-MODEL_NAME = "claude-sonnet-4-6"
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 TARGET_CLAUSE_TYPES = [
     "compensation clause", "termination clause", "confidentiality clause",
@@ -36,10 +38,10 @@ TARGET_CLAUSE_TYPES = [
 ]
 
 # ------------------------------------------------------------------
-# Pre-pipeline sanity check: does this document even look
-# like an employment contract? Catches a wrong upload (a
+# Cheap, free, pre-pipeline sanity check: does this document even look
+# like an employment contract? Catches an obviously wrong upload (a
 # resume, an invoice, an unrelated PDF) before wasting any Model 2/3
-# calls on it, instead of forcing meaningless output out of the pipeline.
+# calls on it, rather than forcing meaningless output out of the pipeline.
 # ------------------------------------------------------------------
 
 EMPLOYMENT_CONTRACT_KEYWORDS = [
@@ -63,7 +65,7 @@ CONFIDENCE_THRESHOLD = 0.35
 
 # ------------------------------------------------------------------
 # Model 2: Clause Classification (zero-shot DeBERTa NLI)
-# Loaded once so the
+# Loaded once, lazily, on first use -- not at import time -- so the
 # app still starts quickly and so importing this module for testing
 # doesn't require downloading model weights.
 # ------------------------------------------------------------------
@@ -332,7 +334,7 @@ def chunk_into_clauses(all_lines, min_chunk_chars=30):
 
 
 # ------------------------------------------------------------------
-# Model 3: Explanation Generation via the real Claude API, called
+# Model 3: Explanation Generation via Groq (Llama 3.3 70B), called
 # server-side using the securely-held key. Model 3 does NOT decide the
 # clause type -- that decision is Model 2's alone (classify_clause,
 # above). Model 3 only explains a clause it has already been told the
@@ -362,8 +364,9 @@ what's actually written here
 def explain_clause(clause_text, predicted_label, max_retries=2):
     """
     Model 3: given a clause and the type Model 2 already assigned it,
-    generates a plain-English risk assessment and explanation via Claude.
-    Never called for 'unclassified' clauses -- see the /analyze route.
+    generates a plain-English risk assessment and explanation via Groq
+    (Llama 3.3 70B). Never called for 'unclassified' clauses -- see the
+    /analyze route.
     """
     prompt = PROMPT_TEMPLATE.format(
         clause_text=clause_text[:1500].replace('"', "'"),
@@ -373,11 +376,11 @@ def explain_clause(clause_text, predicted_label, max_retries=2):
     last_error = None
     for attempt in range(max_retries + 1):
         try:
-            resp = client.messages.create(
+            resp = client.chat.completions.create(
                 model=MODEL_NAME, max_tokens=400,
                 messages=[{"role": "user", "content": prompt}]
             )
-            raw = resp.content[0].text
+            raw = resp.choices[0].message.content
             break
         except Exception as e:
             last_error = e
@@ -419,7 +422,7 @@ def analyze():
         return render_template(
             "index.html", server_ready=False,
             error="This server isn't configured with an API key yet. "
-                  "(Set the ANTHROPIC_API_KEY environment variable.)")
+                  "(Set the GROQ_API_KEY environment variable.)")
 
     file = request.files.get("contract")
     if not file or not file.filename.lower().endswith(".pdf"):
