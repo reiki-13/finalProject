@@ -36,8 +36,8 @@ Each notebook is self-contained and designed for Google Colab.
 4. `Model1_PDF_Extraction.ipynb` and `Pipeline_End_to_End.ipynb` will prompt for a contract PDF
    upload &mdash; skip the upload to fall back to a generated sample contract
 5. `Model3_Explanation_Generation.ipynb` and `Pipeline_End_to_End.ipynb` will prompt for a
-   **Groq** API key (free, no credit card &mdash; get one at
-   [console.groq.com/keys](https://console.groq.com/keys)) &mdash; leave it blank to run in a
+   **Groq** API key (free) &mdash; get one at
+   [console.groq.com/keys](https://console.groq.com/keys)), leave it blank to run in a
    clearly-labelled mock mode instead
 6. `Model2_LegalBERT_FineTuning.ipynb` needs a GPU runtime (`Runtime` &rarr; `Change runtime
    type` &rarr; GPU) to fine-tune in a reasonable time
@@ -63,7 +63,7 @@ venv\Scripts\activate            # Mac/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to a new file named `.env` in the same folder, and put your real key in it:
+Copy `.env.example` to a new file named `.env` in the same folder and put your real key in it:
 
 ```
 GROQ_API_KEY=your-real-key-here
@@ -112,7 +112,7 @@ This is the same three-model pipeline in both the notebooks and the web app &mda
 is not a simplified version of it. Model 2's classification decision and Model 3's explanation
 are two separately checkable stages throughout, verified directly during testing.
 
-**Known limitation, stated honestly:** the deployed zero-shot classifier has two reproducible
+**Known limitation:** the deployed zero-shot classifier has two reproducible
 errors on real-document testing &mdash; it sometimes misreads a compensation clause as a
 probation clause and can miss an explicit non-compete clause entirely (leaving it
 unclassified). Both are already fixed by the validated fine-tuned classifier described above,
