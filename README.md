@@ -3,9 +3,6 @@
 CM3070 Final Project &mdash; an AI-orchestrated system that helps employees understand their
 employment contracts in plain English, built on the CM3020 Artificial Intelligence template
 1: *Orchestrating AI Models to Achieve a Goal*.
-
-Full detail &mdash; motivation, literature review, design, implementation and evaluation &mdash;
-is in [`report/Contract_Analysis_AI_Report.docx`](report/Contract_Analysis_AI_Report.docx).
 This README covers how to run the code.
 
 ## Repository structure
