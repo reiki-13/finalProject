@@ -1,6 +1,6 @@
 # Contract Analysis AI
 
-CM3070 Final Project &mdash; an AI-orchestrated system that helps employees understand their
+CM3070 Final Project: An AI-orchestrated system that helps employees understand their
 employment contracts in plain English, built on the CM3020 Artificial Intelligence template
 1: *Orchestrating AI Models to Achieve a Goal*.
 This README covers how to run the code.
@@ -46,13 +46,12 @@ Each notebook is self-contained and designed for Google Colab.
 fine-tuned LEGAL-BERT alternative. Fine-tuning produces a substantial accuracy improvement (33-68
 percentage-point F1 gain) on four of six clause categories against real, held-out CUAD data; two
 categories (compensation, probation) could not be evaluated because CUAD's own taxonomy doesn't
-meaningfully cover individual-employment concepts &mdash; see the report's Evaluation chapter for
-the full result and why the fine-tuned model is validated but not yet deployed to the web app.
+meaningfully cover individual-employment concepts (covered more in depth in the report)
 
 ## Running the web app locally
 
-The web app is the real, working user interface: upload a contract PDF, get a plain-English,
-risk-flagged report back. It runs a genuine three-model pipeline &mdash; Model 1 (extraction) and
+The web app is the working user interface: upload a contract PDF, get a plain-English,
+risk-flagged report back. It runs a three-model pipeline &mdash; Model 1 (extraction) and
 Model 2 (zero-shot classification) run locally and only a clause Model 2 has confidently
 classified is ever sent to Model 3 (Groq) for explanation. Model 3 is never permitted to revise
 Model 2's classification.
@@ -111,8 +110,7 @@ Contract PDF
 
 This is the same three-model pipeline in both the notebooks and the web app &mdash; the web app
 is not a simplified version of it. Model 2's classification decision and Model 3's explanation
-are two separately checkable stages throughout, verified directly during testing (see the
-report's Design and Evaluation chapters).
+are two separately checkable stages throughout, verified directly during testing.
 
 **Known limitation, stated honestly:** the deployed zero-shot classifier has two reproducible
 errors on real-document testing &mdash; it sometimes misreads a compensation clause as a
@@ -129,8 +127,7 @@ which is not yet deployed for the reasons given in the report.
   classifiers
 - Model 3: tested against live API output (not just mock mode) across multiple real contracts
 - Full pipeline: run end-to-end against real documents in both notebook and web app form
-- A small usability evaluation with real, non-expert participants is reported in the Evaluation
-  chapter
+- A small usability evaluation with real, non-expert participants is reported in the Evaluation chapter of the report.
 
 ## Disclaimer
 
