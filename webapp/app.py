@@ -19,9 +19,9 @@ app = Flask(__name__)
 
 # ------------------------------------------------------------------
 # Model 3's API key. Held ONLY here, as a server-side environment
-# variable -- never sent to, stored in, or visible from the browser.
-# Groq: genuinely free tier, no credit card required, rate-limited
-# (not time-limited) -- see console.groq.com/keys.
+# variable -- never sent to, stored in or visible from the browser.
+# Groq: free tier, rate-limited
+# -- see console.groq.com/keys.
 # ------------------------------------------------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -32,7 +32,7 @@ if GROQ_API_KEY:
 
 # llama-3.3-70b-versatile was decommissioned by Groq on 2026-08-16 -- Groq
 # deprecates/renames models fairly often, so this is configurable via .env
-# rather than hardcoded, to survive the *next* one without a code change.
+# to survive the *next* one without a code change.
 MODEL_NAME = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 TARGET_CLAUSE_TYPES = [
@@ -68,7 +68,7 @@ CONFIDENCE_THRESHOLD = 0.35
 
 # ------------------------------------------------------------------
 # Model 2: Clause Classification (zero-shot DeBERTa NLI)
-# Loaded once, lazily, on first use -- not at import time -- so the
+# Loaded once, lazily, on first use (not at import time) so the
 # app still starts quickly and so importing this module for testing
 # doesn't require downloading model weights.
 # ------------------------------------------------------------------
@@ -341,7 +341,7 @@ def chunk_into_clauses(all_lines, min_chunk_chars=30):
 # server-side using the securely-held key. Model 3 does NOT decide the
 # clause type -- that decision is Model 2's alone (classify_clause,
 # above). Model 3 only explains a clause it has already been told the
-# type of, and independently assesses risk level from the clause's
+# type of and independently assesses risk level from the clause's
 # actual text -- matching the pipeline documented in the project report.
 # ------------------------------------------------------------------
 
